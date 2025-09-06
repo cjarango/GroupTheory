@@ -1,0 +1,11 @@
+numpy
+networkx
+matplotlib
+pandas
+scipy
+sympy
+
+[dev]
+jupyter
+ipykernel
+ipywidgets

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "power_graph"
+version = "0.1.0"
+description = "Academic project for power graphs and group theory labs (Universidad del Norte, 2023-03)"
+authors = [{ name = "Juan Mendoza" }]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "networkx",
+    "matplotlib",
+    "pandas",
+    "scipy",
+    "sympy"
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyter",
+    "ipykernel",
+    "ipywidgets"
+]
+
+[project.scripts]
+power-graph-kernel = "power_graph.utils.kernel:install_kernel"
+
+[tool.setuptools]
+packages = ["power_graph"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.md", "*.txt"]
+
+# Configuración adicional para metadata
+[project.urls]
+Homepage = "https://github.com/tuusuario/power_graph"
+Repository = "https://github.com/tuusuario/power_graph"

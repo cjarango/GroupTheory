@@ -1,0 +1,2 @@
+[console_scripts]
+power-graph-kernel = power_graph.utils.kernel:install_kernel

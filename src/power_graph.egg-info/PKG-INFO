@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: power_graph
+Version: 0.1.0
+Summary: Academic project for power graphs and group theory labs (Universidad del Norte, 2023-03)
+Author: Juan Mendoza
+Project-URL: Homepage, https://github.com/tuusuario/power_graph
+Project-URL: Repository, https://github.com/tuusuario/power_graph
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: networkx
+Requires-Dist: matplotlib
+Requires-Dist: pandas
+Requires-Dist: scipy
+Requires-Dist: sympy
+Provides-Extra: dev
+Requires-Dist: jupyter; extra == "dev"
+Requires-Dist: ipykernel; extra == "dev"
+Requires-Dist: ipywidgets; extra == "dev"
