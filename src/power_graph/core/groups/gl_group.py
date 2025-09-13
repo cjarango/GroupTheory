@@ -309,6 +309,18 @@ class GLGroup(Group):
                 print(f"Generator {i+1}:\n{self.elements[i]}\n")
             if len(self.elements) > max_bases:
                 print(f"... ({len(self.elements) - max_bases} more generators not shown)")
+                
+    
+    def get_generators(self) -> List[Any]:
+        """
+        Returns a generating set for the group.
+        
+        Returns
+        -------
+        List[Any]
+            A list of group elements that generate the group.
+        """
+        raise NotImplementedError("get_generators is not implemented yet.")
 
     # --------------------- Representation --------------------- #
 

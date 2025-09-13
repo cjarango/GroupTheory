@@ -112,3 +112,15 @@ class Group(ABC):
             A dictionary mapping each element to a string label.
         """
         pass
+    
+    @abstractmethod
+    def get_generators(self) -> List[Any]:
+        """
+        Returns a generating set for the group.
+        
+        Returns
+        -------
+        List[Any]
+            A list of group elements that generate the group.
+        """
+        pass
