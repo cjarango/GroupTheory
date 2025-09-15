@@ -158,9 +158,26 @@ class FactorizationGraph:
         return "{" + ", ".join(elems_str) + "}"
 
     def _is_factorization(self, H: frozenset, K: frozenset) -> bool:
-        """Check if H * K = G."""
+        # 1. Filtro rápido por cardinalidad
+        intersection = H & K
+        required_size = (len(H) * len(K)) / len(intersection)
+        if abs(required_size - len(self.group)) > 1e-9:
+            return False
+        
+        # 2. Verificación completa del producto
         G_elements = set(self.group.get_elements())
-        HK = {self.group.multiply(h, k) for h in H for k in K}
+        
+        # Puedes optimizar evitando productos redundantes
+        HK = set()
+        for h in H:
+            for k in K:
+                HK.add(self.group.multiply(h, k))
+                # Early return si ya tenemos todos los elementos
+                if len(HK) == len(G_elements):
+                    break
+            if len(HK) == len(G_elements):
+                break
+        
         return HK == G_elements
 
     def _build_graph(self) -> None:
