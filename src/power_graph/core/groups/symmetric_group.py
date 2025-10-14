@@ -1,8 +1,8 @@
 from typing import Any, List, Dict
+from functools import lru_cache
 from sympy.combinatorics import SymmetricGroup as SymSymmetricGroup
-from sympy.combinatorics.permutations import Permutation
-from sympy.combinatorics import PermutationGroup
 from power_graph.core.groups.group import Group
+
 
 class SymmetricGroup(Group):
     """
@@ -17,41 +17,14 @@ class SymmetricGroup(Group):
         super().__init__()
         self.n: int = n
         self._sym_group: SymSymmetricGroup = SymSymmetricGroup(n)
-        self.elements: List[Any] = list(self._sym_group.generate_dimino())
         self.identity: Any = self._sym_group.identity
 
-
-    @classmethod
-    def dihedral(cls, n: int) -> "SymmetricGroup":
-        """
-        Constructor alternativo para crear el grupo diedral D_n.
-        Contiene rotaciones y reflexiones del polígono regular de n lados.
-        """
-        if n < 2:
-            raise ValueError("El orden del polígono debe ser al menos 2.")
-
-        # Rotación generadora
-        rotation = Permutation(list(range(1, n)) + [0])  # (0 1 2 ... n-1)
-        # Reflexión: intercambiar 0 con n-1, 1 con n-2, etc.
-        reflection_list = list(range(n))
-        for i in range(n // 2):
-            reflection_list[i], reflection_list[n - 1 - i] = reflection_list[n - 1 - i], reflection_list[i]
-        reflection = Permutation(reflection_list)
-
-        # Crear el grupo diedral como subgrupo de S_n
-        dihedral_group = PermutationGroup([rotation, reflection])
-        elements = list(dihedral_group.generate_dimino())
-
-        # Crear la instancia
-        instance = cls.__new__(cls)
-        instance.n = n
-        instance._sym_group = dihedral_group
-        instance.elements = elements
-        instance.identity = dihedral_group.identity
-        return instance
-
+    # ----------------------------
+    # Lazy evaluation of elements
+    # ----------------------------
+    @lru_cache(maxsize=1)
     def get_elements(self) -> List[Any]:
-        return self.elements
+        return list(self._sym_group.generate_dimino())
 
     def get_identity(self) -> Any:
         return self.identity
@@ -63,61 +36,131 @@ class SymmetricGroup(Group):
         return a * b
 
     def get_order(self) -> int:
-        return len(self.elements)
+        return len(self.get_elements())
 
-    def get_element_labels(self) -> Dict[Any, str]:
+    # ----------------------------
+    # Labels / Pretty printing
+    # ----------------------------
+    def get_element_labels(self, one_indexed: bool = True) -> Dict[Any, str]:
         labels: Dict[Any, str] = {}
-        for el in self.elements:
+        for el in self.get_elements():
             if not el.cyclic_form:
                 labels[el] = "()"
             else:
-                # Formatear la notación cíclica correctamente
                 cycles = []
                 for cycle in el.cyclic_form:
+                    if one_indexed:
+                        cycle = [x + 1 for x in cycle]
                     cycles.append(f"({' '.join(map(str, cycle))})")
                 labels[el] = ''.join(cycles)
         return labels
 
-    def print_elements(self) -> None:
-        labels = self.get_element_labels()
-        for i, el in enumerate(self.elements, start=1):
+    def print_elements(self, one_indexed: bool = True) -> None:
+        labels = self.get_element_labels(one_indexed=one_indexed)
+        for i, el in enumerate(self.get_elements(), start=1):
             print(f"{i}: {labels[el]}")
 
+    # ----------------------------
+    # Structural methods
+    # ----------------------------
     def __repr__(self) -> str:
-        return f"SymmetricGroup(S_{self.n})"
+        return f"SymmetricGroup(S_{self.n}, order={self.get_order()})"
 
     def __len__(self) -> int:
         return self.get_order()
 
     def __contains__(self, item: Any) -> bool:
-        return item in self.elements
+        return item in self.get_elements()
 
     def get_generators(self) -> List[Any]:
-        if hasattr(self._sym_group, 'generators'):
+        if hasattr(self._sym_group, "generators"):
             return list(self._sym_group.generators)
-        else:
-            # Para subgrupos que no tienen generadores explícitos,
-            # devolvemos algunos elementos representativos
-            if len(self.elements) > 1:
-                return self.elements[:min(2, len(self.elements))]
-            return [self.identity]
+        elements = self.get_elements()
+        if len(elements) > 1:
+            return elements[:min(2, len(elements))]
+        return [self.identity]
 
     def get_inverse(self, a: Any) -> Any:
         """Get the inverse of an element."""
         return a ** -1
 
     def is_abelian(self) -> bool:
-        """Check if the group is abelian."""
-        return self.n <= 2  # S_n es abeliano solo para n ≤ 2
+        """S_n es abeliano solo si n <= 2."""
+        return self.n <= 2
 
     def conjugate(self, a: Any, g: Any) -> Any:
         """Compute the conjugate g·a·g⁻¹."""
         return g * a * (g ** -1)
 
     def get_center(self) -> List[Any]:
-        """Get the center of the group."""
+        """
+        Centro de S_n:
+        - si n <= 2: todo el grupo
+        - si n > 2: solo la identidad
+        """
         if self.n <= 2:
-            return self.elements
+            return self.get_elements()
+        return [self.identity]
+
+    def get_conjugacy_classes(self) -> List[List[Any]]:
+        """
+        Compute the conjugacy classes of the group.
+        Uses SymPy's built-in method when available.
+        """
+        if hasattr(self._sym_group, "conjugacy_classes"):
+            return [list(cls) for cls in self._sym_group.conjugacy_classes()]
+
+        # fallback manual implementation
+        elements = self.get_elements()
+        classes: List[List[Any]] = []
+        seen = set()
+
+        for g in elements:
+            if g in seen:
+                continue
+            conj_class = {h * g * (h ** -1) for h in elements}
+            classes.append(list(conj_class))
+            seen.update(conj_class)
+
+        return classes
+
+    def print_conjugacy_classes(self, one_indexed: bool = False) -> None:
+        classes = self.get_conjugacy_classes()
+        labels = self.get_element_labels(one_indexed=one_indexed)
+        for i, cls in enumerate(classes, start=1):
+            print(f"Class {i} (size={len(cls)}): {[labels[g] for g in cls]}")
+
+    # ----------------------------
+    # Ascending central series & hypercenter - OPTIMIZADO
+    # ----------------------------
+    def _compute_ascending_central_series(self) -> List[List[Any]]:
+        """
+        Serie central ascendente de S_n.
+        Para n ≥ 3, el centro es trivial y la serie se estabiliza en Z0.
+        """
+        if hasattr(self, "_ascending_central_series"):
+            return self._ascending_central_series
+
+        # Z0 siempre es la identidad
+        Z0 = [self.identity]
+        
+        if self.n <= 2:
+            # S₁ y S₂ son abelianos → hipercentro = grupo completo
+            series = [Z0, self.get_elements()]
         else:
-            # El centro de S_n para n ≥ 3 es trivial
-            return [self.identity]
+            # Sₙ con n ≥ 3 tiene centro trivial → serie se estabiliza en Z0
+            series = [Z0]
+
+        self._ascending_central_series = series
+        return series
+
+    def get_hypercenter(self) -> List[Any]:
+        """Devuelve el hipercentro de S_n (último término de la serie ascendente)."""
+        return self._compute_ascending_central_series()[-1]
+
+    def print_ascending_central_series(self, one_indexed: bool = False) -> None:
+        """Pretty print de la serie central ascendente."""
+        labels = self.get_element_labels(one_indexed=one_indexed)
+        series = self._compute_ascending_central_series()
+        for i, Zi in enumerate(series):
+            print(f"Z{i}(G) = {[labels[g] for g in Zi]}")

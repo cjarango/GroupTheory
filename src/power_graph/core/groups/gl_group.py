@@ -1,8 +1,10 @@
 import numpy as np
 from sympy import isprime, Matrix
 from collections import deque
-from typing import List, Dict, Any, Optional, Generator
+from typing import List, Dict, Any, Optional, Generator, Set, FrozenSet
 from power_graph.core.groups.group import Group
+import itertools
+
 
 class GLGroup(Group):
     """
@@ -19,7 +21,7 @@ class GLGroup(Group):
         super().__init__()
         self._n: int = n
         self._p: int = p
-        self.identity: np.ndarray = np.eye(n, dtype=int)
+        self.identity: np.ndarray = np.eye(n, dtype=int) % p
 
         if generators:
             self.elements: List[np.ndarray] = [np.array(g, dtype=int) % p for g in generators]
@@ -37,19 +39,20 @@ class GLGroup(Group):
                 if i != j:
                     mat = np.eye(self._n, dtype=int)
                     mat[i, j] = 1
-                    generators.append(mat)
+                    generators.append(mat % self._p)
 
         # Dilation matrices D_i(alpha) for alpha in {2,...,p-1}
         for i in range(self._n):
             for alpha in range(2, self._p):
                 mat = np.eye(self._n, dtype=int)
                 mat[i, i] = alpha % self._p
-                generators.append(mat)
+                generators.append(mat % self._p)
 
         return generators
 
-    def _hashable_matrix(self, mat: np.ndarray) -> tuple:
-        return tuple(map(tuple, mat))
+    def _hashable_matrix(self, mat: np.ndarray) -> bytes:
+        """Representación hashable única de una matriz módulo p."""
+        return (mat % self._p).astype(int).tobytes()
 
     # --------------------- Getters --------------------- #
 
@@ -75,33 +78,33 @@ class GLGroup(Group):
             order *= (self._p**self._n - self._p**i)
         return order
 
-    def get_element_labels(self) -> Dict[tuple, np.ndarray]:
+    def get_element_labels(self) -> Dict[bytes, np.ndarray]:
         return {self._hashable_matrix(mat): mat for mat in self.elements}
 
     # --------------------- Operations --------------------- #
 
     def multiply(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
         """Multiply two matrices modulo p."""
-        return np.matmul(a, b) % self._p
+        return (np.matmul(a, b) % self._p).astype(int)
 
     def power(self, a: np.ndarray, exponent: int) -> np.ndarray:
         """Compute a^exponent using binary exponentiation modulo p."""
         result = np.eye(self._n, dtype=int)
-        base = a.copy()
+        base = a.copy() % self._p
         k = exponent
         while k > 0:
             if k % 2 == 1:
                 result = self.multiply(result, base)
             base = self.multiply(base, base)
             k //= 2
-        return result
+        return result % self._p
 
     def inverse(self, a: np.ndarray) -> np.ndarray:
         """Compute the inverse of a matrix modulo p."""
         return np.array(Matrix(a.tolist()).inv_mod(self._p), dtype=int) % self._p
 
     def get_element_order(self, a: np.ndarray) -> Optional[int]:
-        """Return the order of a matrix element in GL(n, p) using binary exponentiation."""
+        """Return the order of a matrix element in GL(n, p)."""
         max_order = self.get_full_group_order()
         for k in range(1, max_order + 1):
             if np.array_equal(self.power(a, k), self.identity):
@@ -120,7 +123,7 @@ class GLGroup(Group):
             yield current
 
             for generator in self.elements:
-                new_elem = self.multiply(current, generator)
+                new_elem = self.multiply(current, generator) % self._p
                 key = self._hashable_matrix(new_elem)
 
                 if key not in seen:
@@ -128,7 +131,6 @@ class GLGroup(Group):
                     queue.append(new_elem)
 
                     if len(seen) >= max_elements:
-                        print(f"Reached maximum element limit ({max_elements}), stopping BFS.")
                         return
 
     def generate_all_elements(self, max_elements: Optional[int] = None) -> List[np.ndarray]:
@@ -141,6 +143,69 @@ class GLGroup(Group):
             if len(elements) >= max_elements:
                 break
         return elements
+
+    # --------------------- Subgroups --------------------- #
+
+    def generate_subgroup(self, generators: List[np.ndarray]) -> List[np.ndarray]:
+        """
+        Genera el subgrupo generado por una lista de elementos.
+        Incluye los inversos de los generadores.
+        """
+        # Asegurar que trabajamos con generadores + sus inversos
+        gens = []
+        for g in generators:
+            gens.append(g % self._p)
+            gens.append(self.inverse(g))
+
+        seen = {self._hashable_matrix(self.identity)}
+        subgroup = [self.identity.copy()]
+        queue = deque([self.identity.copy()])
+
+        while queue:
+            current = queue.popleft()
+            for g in gens:
+                new_elem = self.multiply(current, g)
+                key = self._hashable_matrix(new_elem)
+                if key not in seen:
+                    seen.add(key)
+                    subgroup.append(new_elem)
+                    queue.append(new_elem)
+        return subgroup
+
+
+    def get_all_subgroups(self) -> List[List[np.ndarray]]:
+        """
+        Devuelve todos los subgrupos de GL(n,p).
+        Incluye:
+        - el subgrupo trivial
+        - todos los subgrupos generados por subconjuntos de elementos
+        - el grupo completo
+        """
+        all_elements = self.generate_all_elements()
+        group_order = len(all_elements)
+
+        subgroups: List[List[np.ndarray]] = []
+        seen_subgroups: Set[FrozenSet[bytes]] = set()
+
+        # Subgrupo trivial
+        trivial = [self.identity.copy()]
+        subgroups.append(trivial)
+        seen_subgroups.add(frozenset([self._hashable_matrix(self.identity)]))
+
+        # Subgrupos generados por subconjuntos de elementos
+        for r in range(1, len(all_elements) + 1):
+            for combo in itertools.combinations(all_elements, r):
+                subgroup = self.generate_subgroup(list(combo))
+                subgroup_set = frozenset(self._hashable_matrix(m) for m in subgroup)
+
+                if (subgroup_set not in seen_subgroups and
+                    len(subgroup) > 0 and
+                    group_order % len(subgroup) == 0):
+                    subgroups.append(subgroup)
+                    seen_subgroups.add(subgroup_set)
+
+        return subgroups
+
 
     # --------------------- Print elements --------------------- #
 
@@ -160,11 +225,10 @@ class GLGroup(Group):
                 print(f"... ({len(self.elements) - max_bases} more generators not shown)")
 
     def get_generators(self) -> List[Any]:
-        raise NotImplementedError("get_generators is not implemented yet.")
+        return self.elements
 
     # --------------------- Representation --------------------- #
 
     def __repr__(self) -> str:
         full_order = self.get_full_group_order()
         return f"GLGroup(GL({self._n}, {self._p}), generators={len(self.elements)}, full_order={full_order})"
-
