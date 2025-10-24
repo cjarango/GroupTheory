@@ -33,13 +33,13 @@ class DihedralGroup(SymmetricGroup):
 
         # Construir D_n como subgrupo de S_n
         dihedral_group = PermutationGroup([self.rotation, self.reflection])
-        elements = list(dihedral_group.generate_dimino())
-
-        # Inicializar atributos como en SymmetricGroup
+        
+        # Inicializar SymmetricGroup con n, pero luego sobreescribir
         super().__init__(n)
         self._sym_group = dihedral_group
-        self.elements = elements
         self.identity = dihedral_group.identity
+        # Limpiar cache de elementos para forzar recálculo
+        self.get_elements.cache_clear()
 
     def __repr__(self) -> str:
         return f"DihedralGroup(D_{self.n})"
@@ -50,13 +50,8 @@ class DihedralGroup(SymmetricGroup):
 
     @lru_cache(maxsize=1)
     def get_elements(self) -> List[Any]:
-        """Garantizar compatibilidad con cache."""
-        return self.elements
-
-    def get_hypercenter(self) -> List[Any]:
-        """Devuelve el hipercentro de D_n - MÉTODO CRÍTICO para EngelGraph."""
-        series = self._compute_ascending_central_series()
-        return series[-1]
+        """Garantizar que usamos los elementos de D_n, no de S_n."""
+        return list(self._sym_group.generate_dimino())
 
     def is_abelian(self) -> bool:
         """D_n es abeliano solo si n <= 2"""
@@ -70,7 +65,7 @@ class DihedralGroup(SymmetricGroup):
         - si n es par: {e, rotación de 180°}
         """
         if self.n <= 2:
-            return self.elements  # casos triviales
+            return self.get_elements()
 
         if self.n % 2 == 0:
             # rotación de 180° = rot^(n/2)
@@ -83,39 +78,77 @@ class DihedralGroup(SymmetricGroup):
         Conjugacy classes específicas de D_n.
         Calculadas por definición: Cl(g) = { h g h^{-1} : h in G }.
         """
+        elements = self.get_elements()
         classes: List[List[Any]] = []
         used = set()
 
-        for g in self.elements:
+        for g in elements:
             if g in used:
                 continue
-            conj_class = {h * g * (~h) for h in self.elements}
+            conj_class = {h * g * (~h) for h in elements}
             classes.append(list(conj_class))
             used.update(conj_class)
 
         return classes
 
     # ----------------------------
-    # Serie central ascendente y hipercentro - CORREGIDO
+    # Serie central ascendente y hipercentro - CORREGIDO MATEMÁTICAMENTE
     # ----------------------------
 
-    def _compute_ascending_central_series(self):
+    def _is_power_of_two(self, n: int) -> bool:
+        """Verifica si n es potencia de 2."""
+        return (n & (n - 1)) == 0 and n > 0
+
+    def _compute_ascending_central_series(self) -> List[List[Any]]:
         """
-        Serie central ascendente para D_n.
-        Para n > 2, el hipercentro es el centro.
-        """
-        series = [[self.identity]]
+        Serie central ascendente CORREGIDA para D_n.
         
+        Teorema:
+        - Si n ≤ 2: D_n es abeliano → Z₀ = {e}, Z₁ = G
+        - Si n > 2 y n NO es potencia de 2: Z₀ = {e}, Z₁ = Z(D_n) (se estabiliza)
+        - Si n > 2 y n es potencia de 2: D_n es nilpotente → serie completa hasta G
+        """
+        if hasattr(self, "_ascending_central_series"):
+            return self._ascending_central_series
+
+        Z0 = [self.identity]
+        
+        # Caso n ≤ 2: grupo abeliano
         if self.n <= 2:
-            series.append(self.elements)
-            return series
+            series = [Z0, self.get_elements()]
+        else:
+            Z1 = self.get_center()
             
-        if self.n % 2 == 1:  # n impar
-            return series  # Se estanca en Z0
-        
-        # n PAR - SIEMPRE el centro para n > 2
-        series.append(self.get_center())
+            if self._is_power_of_two(self.n):
+                # Para n potencia de 2: D_n es nilpotente de clase 2
+                # Z₀ ⊆ Z₁ ⊆ Z₂ = G
+                series = [Z0, Z1, self.get_elements()]
+            else:
+                # Para n no potencia de 2: Z₀ ⊆ Z₁ (se estabiliza)
+                series = [Z0, Z1]
+
+        self._ascending_central_series = series
         return series
+
+    def get_hypercenter(self) -> List[Any]:
+        """
+        Hipercentro CORREGIDO de D_n.
+        
+        Teorema:
+        - Si n ≤ 2: Z∞(D_n) = D_n (abeliano)
+        - Si n es potencia de 2: Z∞(D_n) = D_n (nilpotente)  
+        - En otro caso: Z∞(D_n) = Z(D_n)
+        """
+        series = self._compute_ascending_central_series()
+        return series[-1]
+
+    def is_nilpotent(self) -> bool:
+        """
+        Determina si D_n es nilpotente.
+        
+        Teorema: D_n es nilpotente si y solo si n es potencia de 2.
+        """
+        return self._is_power_of_two(self.n)
 
     # ----------------------------
     # Métodos adicionales para mejor integración
@@ -145,3 +178,20 @@ class DihedralGroup(SymmetricGroup):
                     current = self.reflection * (self.rotation ** k)
                 labels[el] = f"s·r^{k}" if k > 0 else "s"
         return labels
+
+    def print_ascending_central_series(self, one_indexed: bool = False) -> None:
+        """Pretty print de la serie central ascendente."""
+        labels = self.get_element_labels(one_indexed=one_indexed)
+        series = self._compute_ascending_central_series()
+        
+        print(f"Serie Central Ascendente de D_{self.n}:")
+        for i, Zi in enumerate(series):
+            element_labels = [labels[g] for g in Zi]
+            print(f"Z{i}(G) = {{{', '.join(element_labels)}}} (tamaño: {len(Zi)})")
+        
+        # Información adicional sobre nilpotencia
+        if self.is_nilpotent():
+            print(f"✓ D_{self.n} es nilpotente (n={self.n} es potencia de 2)")
+            print(f"✓ Clase de nilpotencia: {len(series) - 1}")
+        else:
+            print(f"✗ D_{self.n} no es nilpotente (n={self.n} no es potencia de 2)")

@@ -131,32 +131,39 @@ class SymmetricGroup(Group):
             print(f"Class {i} (size={len(cls)}): {[labels[g] for g in cls]}")
 
     # ----------------------------
-    # Ascending central series & hypercenter - OPTIMIZADO
+    # Ascending central series & hypercenter - CORREGIDO
     # ----------------------------
     def _compute_ascending_central_series(self) -> List[List[Any]]:
         """
         Serie central ascendente de S_n.
-        Para n ≥ 3, el centro es trivial y la serie se estabiliza en Z0.
+        
+        Para n ≤ 2: grupo abeliano → Z₀ = {e}, Z₁ = G
+        Para n ≥ 3: Z₀ = {e}, Z₁ = Z(G) = {e} → serie se estabiliza
         """
         if hasattr(self, "_ascending_central_series"):
             return self._ascending_central_series
 
-        # Z0 siempre es la identidad
-        Z0 = [self.identity]
+        series = []
+        Z_current = [self.identity]  # Z₀ = {e}
+        series.append(Z_current.copy())
         
         if self.n <= 2:
-            # S₁ y S₂ son abelianos → hipercentro = grupo completo
-            series = [Z0, self.get_elements()]
+            # S₁ y S₂ son abelianos → Z₁ = grupo completo
+            Z_next = self.get_elements()
+            if Z_next != Z_current:
+                series.append(Z_next)
         else:
-            # Sₙ con n ≥ 3 tiene centro trivial → serie se estabiliza en Z0
-            series = [Z0]
+            # Para n ≥ 3, Z₁ = Z(G) = {e} = Z₀ → serie se estabiliza
+            # No añadimos Z₁ porque es igual a Z₀
+            pass
 
         self._ascending_central_series = series
         return series
 
     def get_hypercenter(self) -> List[Any]:
         """Devuelve el hipercentro de S_n (último término de la serie ascendente)."""
-        return self._compute_ascending_central_series()[-1]
+        series = self._compute_ascending_central_series()
+        return series[-1]
 
     def print_ascending_central_series(self, one_indexed: bool = False) -> None:
         """Pretty print de la serie central ascendente."""
